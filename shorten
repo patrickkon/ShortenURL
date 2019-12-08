@@ -1,0 +1,163 @@
+#!/bin/bash
+# Author: Patrick Kon https://github.com/patrickkon
+# Function: uses the TinyURL  API to shorten/expand URLs
+# shorten [options] [URL]
+
+
+## Initialize variables:
+configuredHTTPclient=""
+responseURL=""
+
+# Determine the HTTP tool the user's system has:
+# More specifically, is curl installed
+getHTTPclient()
+{
+    if command -v curl &>/dev/null; then
+        configuredHTTPclient="curl"
+        echo  "The HTTP Client you are using is: $configuredHTTPclient"
+#    elif command -v wget &>/dev/null; then
+#        configuredHTTPclient="wget"
+#    elif command -v http &>/dev/null; then
+#        configuredHTTPclient="httpie"
+    else
+        echo "Error: This tool requires that you to have installed \
+            curl. Use \"sudo apt install curl\" if on debian system." >&2
+        # redirect to standard error stream
+        return 1
+    fi
+}
+
+# Isolate function call to curl with options, from the user's URL input
+httpGet()
+{
+    curl -A curl -s -L "$@"
+    # "$@" expands to separate words: "$1" "$2" ...
+    # where $1 is the first arg after call to httpGet
+    # i.e. httpGET [this one]
+}
+
+
+testInternetConnection()
+{
+    httpGet github.com >/dev/null 2>&1 || { echo "You do not have an internet \ connection. Please try again!" >&2; return 1; }
+    echo "Success! You have an internet connection!"
+}
+
+
+usage_instructions()
+{   # This is a here script
+    cat << _EOF_
+Shorten
+Description: Shorten URLs and recover shortened URLs.
+Usage: shorten [options] [URL]
+    -s Shorten the URL
+    -e Extend a shortened URL
+    -h Show help
+    -v Get tool version
+Example:
+    Input: shorten -s github.com
+    Output: http://bit.ly/someChars
+
+_EOF_
+}
+
+shortenURL()
+{
+   inputURL=$1
+   responseURL=$(httpGet http://tinyurl.com/api-create.php?url=$inputURL)
+}
+
+expandURL()
+{
+    inputURL=$1
+    tempURL=$(httpGet http://unshorten.me/s/$inputURL)
+    if [[ $tempURL = "Connection Error" ]]; then
+    echo "Your URL is invalid. Try again"
+    return 1;
+    fi
+    responseURL=$tempURL
+}
+
+printShortened()
+{
+    cat << _EOF_
+--------------------
+Input URL: $1
+Shortened URL: $responseURL
+-------------------
+_EOF_
+}
+
+printExpanded()
+{
+    cat << _EOF_
+------------------
+Input URL: $1
+Expanded URL: $responseURL
+------------------
+_EOF_
+}
+
+
+# Main program entry point:
+
+getHTTPclient || exit 1
+
+toShorten=0
+toExpand=0
+while getopts "e:s:hv" opt; do
+    case $opt in
+        /?) 
+            echo "Invalid option: \"?\""
+            exit 1
+            ;;
+        :) 
+           echo "Invalid option: \":\""
+           exit 1
+           ;;
+       s)
+           echo "Shortening..."
+           toShorten=1
+           inputURL=$OPTARG
+           ;;
+       e)
+           echo "Unpacking.."
+           toExpand=1
+           inputURL=$OPTARG
+           ;;
+       h)
+           usage_instructions
+           exit 0
+           ;;
+       v)
+           echo "Option not implemented yet!"
+           exit 0
+           ;;
+       *)
+           usage_instructions
+           exit 1
+           ;;
+   esac
+done
+
+if [[ $toShorten == "1" && $toExpand == "1" ]]; then
+    echo "Shortening and expanding the URL = no work has been done!"
+    exit 1
+fi
+
+if [[ $# == "2" ]]; then #if there is only 1 argument for the options "s" and "e"
+    if [ $toShorten == "1" ]; then
+        testInternetConnection        
+        shortenURL $inputURL
+        printShortened
+    elif [ $toExpand == "1" ]; then
+        testInternetConnection
+        expandURL $inputURL
+        printExpanded
+    fi
+else 
+    echo "Options \"s\" and \"e\" only accept one argument: a single URL"
+    echo "You gave $# arguments"
+    exit 1 
+fi
+    exit 0
